@@ -17,9 +17,9 @@ export const TREASURY_PDA = new PublicKey('2XfHTeNWTjNwUmgoXaafYuqHcAAXj8F5Kjw2B
 const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
 const AGENT_ACCOUNT_SIZE = 263;
 
-// Anchor discriminator for registerAgent instruction
-const REGISTER_AGENT_DISCRIMINATOR = Buffer.from([51, 10, 104, 110, 50, 83, 175, 37]);
-const VERIFY_AGENT_DISCRIMINATOR = Buffer.from([26, 117, 145, 70, 163, 102, 21, 103]);
+// Anchor discriminator for instructions (SHA256("global:<instruction_name>")[0..8])
+const REGISTER_AGENT_DISCRIMINATOR = Buffer.from([135, 157, 66, 195, 2, 113, 175, 30]);
+const GET_VERIFIED_DISCRIMINATOR = Buffer.from([132, 231, 2, 30, 115, 74, 23, 26]);
 
 /**
  * AgentCard metadata structure (hosted JSON)
@@ -330,7 +330,7 @@ export class SAID {
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       programId: SAID_PROGRAM_ID,
-      data: VERIFY_AGENT_DISCRIMINATOR
+      data: GET_VERIFIED_DISCRIMINATOR
     });
   }
 
@@ -371,12 +371,12 @@ export class SAID {
     // Build transaction: funder sends rent to wallet, then wallet registers
     const tx = new Transaction();
     
-    // Transfer rent + a tiny bit for tx fee from funder to new wallet
+    // Transfer 2x rent to new wallet - covers PDA creation + remaining balance
     tx.add(
       SystemProgram.transfer({
         fromPubkey: funder.publicKey,
         toPubkey: wallet.publicKey,
-        lamports: rentExempt + 10000 // rent + small buffer for fees
+        lamports: rentExempt * 2 // ~0.0054 SOL - plenty for PDA + fees
       })
     );
     

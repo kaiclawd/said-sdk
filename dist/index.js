@@ -50,8 +50,8 @@ var SAID_PROGRAM_ID = new import_web3.PublicKey("5dpw6KEQPn248pnkkaYyWfHwu2nfb3L
 var TREASURY_PDA = new import_web3.PublicKey("2XfHTeNWTjNwUmgoXaafYuqHcAAXj8F5Kjw2Bnzi4FxH");
 var DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
 var AGENT_ACCOUNT_SIZE = 263;
-var REGISTER_AGENT_DISCRIMINATOR = Buffer.from([51, 10, 104, 110, 50, 83, 175, 37]);
-var VERIFY_AGENT_DISCRIMINATOR = Buffer.from([26, 117, 145, 70, 163, 102, 21, 103]);
+var REGISTER_AGENT_DISCRIMINATOR = Buffer.from([135, 157, 66, 195, 2, 113, 175, 30]);
+var GET_VERIFIED_DISCRIMINATOR = Buffer.from([132, 231, 2, 30, 115, 74, 23, 26]);
 var SAID = class _SAID {
   constructor(config = {}) {
     this.config = config;
@@ -248,7 +248,7 @@ var SAID = class _SAID {
         { pubkey: import_web3.SystemProgram.programId, isSigner: false, isWritable: false }
       ],
       programId: SAID_PROGRAM_ID,
-      data: VERIFY_AGENT_DISCRIMINATOR
+      data: GET_VERIFIED_DISCRIMINATOR
     });
   }
   /**
@@ -276,8 +276,8 @@ var SAID = class _SAID {
       import_web3.SystemProgram.transfer({
         fromPubkey: funder.publicKey,
         toPubkey: wallet.publicKey,
-        lamports: rentExempt + 1e4
-        // rent + small buffer for fees
+        lamports: rentExempt + 1e5
+        // rent + 0.0001 SOL buffer for fees
       })
     );
     tx.add(registerIx);
