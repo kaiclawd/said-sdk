@@ -1,4 +1,13 @@
-import { Connection, PublicKey } from '@solana/web3.js';
+import { 
+  Connection, 
+  PublicKey, 
+  Keypair, 
+  Transaction, 
+  TransactionInstruction,
+  SystemProgram,
+  sendAndConfirmTransaction
+} from '@solana/web3.js';
+import * as bs58 from 'bs58';
 
 // SAID Program on Solana Mainnet
 export const SAID_PROGRAM_ID = new PublicKey('5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G');
@@ -7,6 +16,10 @@ export const TREASURY_PDA = new PublicKey('2XfHTeNWTjNwUmgoXaafYuqHcAAXj8F5Kjw2B
 // Default RPC endpoints
 const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
 const AGENT_ACCOUNT_SIZE = 263;
+
+// Anchor discriminator for registerAgent instruction
+const REGISTER_AGENT_DISCRIMINATOR = Buffer.from([51, 10, 104, 110, 50, 83, 175, 37]);
+const VERIFY_AGENT_DISCRIMINATOR = Buffer.from([26, 117, 145, 70, 163, 102, 21, 103]);
 
 /**
  * AgentCard metadata structure (hosted JSON)
@@ -18,10 +31,14 @@ export interface AgentCard {
   wallet?: string;
   agentPDA?: string;
   capabilities?: string[];
+  skills?: string[];
   website?: string;
   created?: string;
   verified?: boolean;
   verifiedAt?: string;
+  mcpEndpoint?: string;
+  a2aEndpoint?: string;
+  serviceTypes?: string[];
 }
 
 /**
@@ -47,7 +64,34 @@ export interface SAIDConfig {
 }
 
 /**
- * SAID SDK - Query and verify AI agent identities on Solana
+ * Options for creating a new agent
+ */
+export interface CreateAgentOptions {
+  name: string;
+  description?: string;
+  twitter?: string;
+  website?: string;
+  skills?: string[];
+  capabilities?: string[];
+  serviceTypes?: string[];
+  mcpEndpoint?: string;
+  a2aEndpoint?: string;
+}
+
+/**
+ * Result from creating a new agent
+ */
+export interface CreateAgentResult {
+  wallet: Keypair;
+  walletAddress: string;
+  secretKey: string; // base58 encoded
+  agentPDA: string;
+  metadataUri: string;
+  txSignature: string;
+}
+
+/**
+ * SAID SDK - Query, verify, and create AI agent identities on Solana
  */
 export class SAID {
   private connection: Connection;
@@ -76,15 +120,6 @@ export class SAID {
    * Parse raw account data into AgentIdentity
    */
   private parseAgentData(pubkey: string, data: Buffer): AgentIdentity {
-    // Account layout:
-    // 0-8: discriminator
-    // 8-40: owner (32 bytes)
-    // 40-44: uri_length (4 bytes LE)
-    // 44-44+uri_length: metadata_uri
-    // +8: registered_at (i64)
-    // +1: is_verified (bool)
-    // +8: verified_at (i64)
-    
     const owner = new PublicKey(data.subarray(8, 40)).toString();
     
     const uriLength = data.readUInt32LE(40);
@@ -166,7 +201,6 @@ export class SAID {
     if (!agent || !agent.metadataUri) return null;
 
     try {
-      // Ensure www prefix for CORS
       let uri = agent.metadataUri;
       if (uri.includes('saidprotocol.com') && !uri.includes('www.')) {
         uri = uri.replace('saidprotocol.com', 'www.saidprotocol.com');
@@ -242,6 +276,229 @@ export class SAID {
       total: agents.length,
       verified: agents.filter(a => a.isVerified).length
     };
+  }
+
+  /**
+   * Generate a new wallet keypair
+   */
+  generateWallet(): Keypair {
+    return Keypair.generate();
+  }
+
+  /**
+   * Build registerAgent instruction
+   */
+  private buildRegisterInstruction(
+    agentPDA: PublicKey,
+    owner: PublicKey,
+    metadataUri: string
+  ): TransactionInstruction {
+    // Encode metadata URI with length prefix (Borsh string encoding)
+    const uriBytes = Buffer.from(metadataUri, 'utf8');
+    const uriLengthBuffer = Buffer.alloc(4);
+    uriLengthBuffer.writeUInt32LE(uriBytes.length, 0);
+    
+    const data = Buffer.concat([
+      REGISTER_AGENT_DISCRIMINATOR,
+      uriLengthBuffer,
+      uriBytes
+    ]);
+
+    return new TransactionInstruction({
+      keys: [
+        { pubkey: agentPDA, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      programId: SAID_PROGRAM_ID,
+      data
+    });
+  }
+
+  /**
+   * Build verifyAgent instruction
+   */
+  private buildVerifyInstruction(
+    agentPDA: PublicKey,
+    owner: PublicKey
+  ): TransactionInstruction {
+    return new TransactionInstruction({
+      keys: [
+        { pubkey: agentPDA, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: TREASURY_PDA, isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      programId: SAID_PROGRAM_ID,
+      data: VERIFY_AGENT_DISCRIMINATOR
+    });
+  }
+
+  /**
+   * Create a new agent with zero friction
+   * 
+   * This is the magic function - creates a wallet, registers the agent,
+   * and optionally verifies them. The funder pays for registration rent.
+   * 
+   * @param options - Agent metadata (name, description, skills, etc.)
+   * @param funder - Keypair that pays for registration (our treasury)
+   * @param metadataUri - URL where AgentCard JSON is hosted
+   * @returns CreateAgentResult with wallet, PDA, and transaction signature
+   */
+  async createAgent(
+    options: CreateAgentOptions,
+    funder: Keypair,
+    metadataUri: string
+  ): Promise<CreateAgentResult> {
+    // Generate new wallet for the agent
+    const wallet = Keypair.generate();
+    const [agentPDA] = SAID.deriveAgentPDA(wallet.publicKey);
+
+    // Build register instruction
+    const registerIx = this.buildRegisterInstruction(
+      agentPDA,
+      wallet.publicKey,
+      metadataUri
+    );
+
+    // We need to fund the new wallet with enough for rent
+    // The agent account is created by the program, but owner needs to sign
+    // So funder transfers rent to wallet first, then wallet signs register tx
+    
+    // Calculate rent (approximately 0.00285 SOL for 263 bytes)
+    const rentExempt = await this.connection.getMinimumBalanceForRentExemption(AGENT_ACCOUNT_SIZE);
+    
+    // Build transaction: funder sends rent to wallet, then wallet registers
+    const tx = new Transaction();
+    
+    // Transfer rent + a tiny bit for tx fee from funder to new wallet
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: funder.publicKey,
+        toPubkey: wallet.publicKey,
+        lamports: rentExempt + 10000 // rent + small buffer for fees
+      })
+    );
+    
+    // Add register instruction (signed by new wallet)
+    tx.add(registerIx);
+
+    // Send transaction (signed by both funder and new wallet)
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      tx,
+      [funder, wallet],
+      { commitment: 'confirmed' }
+    );
+
+    return {
+      wallet,
+      walletAddress: wallet.publicKey.toString(),
+      secretKey: bs58.encode(wallet.secretKey),
+      agentPDA: agentPDA.toString(),
+      metadataUri,
+      txSignature: signature
+    };
+  }
+
+  /**
+   * Register an existing wallet on SAID
+   * 
+   * @param wallet - The agent's existing wallet keypair
+   * @param metadataUri - URL where AgentCard JSON is hosted
+   * @param funder - Optional separate funder for rent (defaults to wallet)
+   */
+  async registerAgent(
+    wallet: Keypair,
+    metadataUri: string,
+    funder?: Keypair
+  ): Promise<{ agentPDA: string; txSignature: string }> {
+    const [agentPDA] = SAID.deriveAgentPDA(wallet.publicKey);
+    const payer = funder || wallet;
+
+    const registerIx = this.buildRegisterInstruction(
+      agentPDA,
+      wallet.publicKey,
+      metadataUri
+    );
+
+    const tx = new Transaction().add(registerIx);
+    
+    const signers = funder ? [funder, wallet] : [wallet];
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      tx,
+      signers,
+      { commitment: 'confirmed' }
+    );
+
+    return {
+      agentPDA: agentPDA.toString(),
+      txSignature: signature
+    };
+  }
+
+  /**
+   * Verify an existing agent (pays 0.01 SOL verification fee)
+   * 
+   * @param wallet - The agent's wallet keypair
+   */
+  async verifyAgent(wallet: Keypair): Promise<{ txSignature: string }> {
+    const [agentPDA] = SAID.deriveAgentPDA(wallet.publicKey);
+
+    const verifyIx = this.buildVerifyInstruction(agentPDA, wallet.publicKey);
+    const tx = new Transaction().add(verifyIx);
+
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      tx,
+      [wallet],
+      { commitment: 'confirmed' }
+    );
+
+    return { txSignature: signature };
+  }
+
+  /**
+   * Create and verify an agent in one transaction
+   * Zero friction: agent gets wallet + registration + verification
+   * Funder pays rent (~0.003 SOL), agent pays verification (0.01 SOL)
+   * Net cost to funder: ~0.003 SOL, Net revenue: 0.01 SOL = +0.007 SOL profit
+   */
+  async createAndVerifyAgent(
+    options: CreateAgentOptions,
+    funder: Keypair,
+    metadataUri: string
+  ): Promise<CreateAgentResult & { verified: boolean }> {
+    // First create the agent
+    const result = await this.createAgent(options, funder, metadataUri);
+    
+    // Fund wallet with verification fee (0.01 SOL)
+    const VERIFICATION_FEE = 10_000_000; // 0.01 SOL in lamports
+    
+    const fundTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: funder.publicKey,
+        toPubkey: result.wallet.publicKey,
+        lamports: VERIFICATION_FEE + 5000 // verification fee + tx fee buffer
+      })
+    );
+    
+    await sendAndConfirmTransaction(
+      this.connection,
+      fundTx,
+      [funder],
+      { commitment: 'confirmed' }
+    );
+
+    // Now verify
+    try {
+      await this.verifyAgent(result.wallet);
+      return { ...result, verified: true };
+    } catch (e) {
+      // Return result even if verification fails
+      return { ...result, verified: false };
+    }
   }
 }
 

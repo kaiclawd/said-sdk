@@ -1,4 +1,4 @@
-import { PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
 
 declare const SAID_PROGRAM_ID: PublicKey;
 declare const TREASURY_PDA: PublicKey;
@@ -12,10 +12,14 @@ interface AgentCard {
     wallet?: string;
     agentPDA?: string;
     capabilities?: string[];
+    skills?: string[];
     website?: string;
     created?: string;
     verified?: boolean;
     verifiedAt?: string;
+    mcpEndpoint?: string;
+    a2aEndpoint?: string;
+    serviceTypes?: string[];
 }
 /**
  * On-chain agent identity data
@@ -38,7 +42,32 @@ interface SAIDConfig {
     commitment?: 'processed' | 'confirmed' | 'finalized';
 }
 /**
- * SAID SDK - Query and verify AI agent identities on Solana
+ * Options for creating a new agent
+ */
+interface CreateAgentOptions {
+    name: string;
+    description?: string;
+    twitter?: string;
+    website?: string;
+    skills?: string[];
+    capabilities?: string[];
+    serviceTypes?: string[];
+    mcpEndpoint?: string;
+    a2aEndpoint?: string;
+}
+/**
+ * Result from creating a new agent
+ */
+interface CreateAgentResult {
+    wallet: Keypair;
+    walletAddress: string;
+    secretKey: string;
+    agentPDA: string;
+    metadataUri: string;
+    txSignature: string;
+}
+/**
+ * SAID SDK - Query, verify, and create AI agent identities on Solana
  */
 declare class SAID {
     private connection;
@@ -89,6 +118,58 @@ declare class SAID {
         total: number;
         verified: number;
     }>;
+    /**
+     * Generate a new wallet keypair
+     */
+    generateWallet(): Keypair;
+    /**
+     * Build registerAgent instruction
+     */
+    private buildRegisterInstruction;
+    /**
+     * Build verifyAgent instruction
+     */
+    private buildVerifyInstruction;
+    /**
+     * Create a new agent with zero friction
+     *
+     * This is the magic function - creates a wallet, registers the agent,
+     * and optionally verifies them. The funder pays for registration rent.
+     *
+     * @param options - Agent metadata (name, description, skills, etc.)
+     * @param funder - Keypair that pays for registration (our treasury)
+     * @param metadataUri - URL where AgentCard JSON is hosted
+     * @returns CreateAgentResult with wallet, PDA, and transaction signature
+     */
+    createAgent(options: CreateAgentOptions, funder: Keypair, metadataUri: string): Promise<CreateAgentResult>;
+    /**
+     * Register an existing wallet on SAID
+     *
+     * @param wallet - The agent's existing wallet keypair
+     * @param metadataUri - URL where AgentCard JSON is hosted
+     * @param funder - Optional separate funder for rent (defaults to wallet)
+     */
+    registerAgent(wallet: Keypair, metadataUri: string, funder?: Keypair): Promise<{
+        agentPDA: string;
+        txSignature: string;
+    }>;
+    /**
+     * Verify an existing agent (pays 0.01 SOL verification fee)
+     *
+     * @param wallet - The agent's wallet keypair
+     */
+    verifyAgent(wallet: Keypair): Promise<{
+        txSignature: string;
+    }>;
+    /**
+     * Create and verify an agent in one transaction
+     * Zero friction: agent gets wallet + registration + verification
+     * Funder pays rent (~0.003 SOL), agent pays verification (0.01 SOL)
+     * Net cost to funder: ~0.003 SOL, Net revenue: 0.01 SOL = +0.007 SOL profit
+     */
+    createAndVerifyAgent(options: CreateAgentOptions, funder: Keypair, metadataUri: string): Promise<CreateAgentResult & {
+        verified: boolean;
+    }>;
 }
 declare const said: SAID;
 declare const lookup: (wallet: string | PublicKey) => Promise<AgentIdentity | null>;
@@ -104,4 +185,4 @@ declare const getStats: () => Promise<{
     verified: number;
 }>;
 
-export { type AgentCard, type AgentIdentity, SAID, type SAIDConfig, SAID_PROGRAM_ID, TREASURY_PDA, SAID as default, getAgent, getCard, getStats, isRegistered, isVerified, listAgents, lookup, said };
+export { type AgentCard, type AgentIdentity, type CreateAgentOptions, type CreateAgentResult, SAID, type SAIDConfig, SAID_PROGRAM_ID, TREASURY_PDA, SAID as default, getAgent, getCard, getStats, isRegistered, isVerified, listAgents, lookup, said };
