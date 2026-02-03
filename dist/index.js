@@ -276,8 +276,8 @@ var SAID = class _SAID {
       import_web3.SystemProgram.transfer({
         fromPubkey: funder.publicKey,
         toPubkey: wallet.publicKey,
-        lamports: rentExempt + 1e5
-        // rent + 0.0001 SOL buffer for fees
+        lamports: rentExempt * 2
+        // ~0.0054 SOL - plenty for PDA + fees
       })
     );
     tx.add(registerIx);

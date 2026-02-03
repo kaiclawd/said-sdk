@@ -1,10 +1,13 @@
 {
   "name": "said-sdk",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "SDK for SAID Protocol - Identity infrastructure for AI agents on Solana",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "bin": {
+    "said": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "require": "./dist/index.js",
@@ -16,8 +19,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "build": "tsup src/index.ts src/cli.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts src/cli.ts --format cjs,esm --dts --watch",
     "test": "node test.mjs",
     "prepublishOnly": "npm run build"
   },
@@ -27,7 +30,8 @@
     "identity",
     "said",
     "verification",
-    "reputation"
+    "reputation",
+    "cli"
   ],
   "author": "Kai <@kaiclawd>",
   "license": "MIT",
@@ -38,7 +42,8 @@
   "homepage": "https://saidprotocol.com",
   "dependencies": {
     "@solana/web3.js": "^1.98.0",
-    "bs58": "^5.0.0"
+    "bs58": "^5.0.0",
+    "commander": "^12.1.0"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
