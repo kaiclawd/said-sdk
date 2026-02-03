@@ -325,8 +325,8 @@ export class SAID {
     return new TransactionInstruction({
       keys: [
         { pubkey: agentPDA, isSigner: false, isWritable: true },
-        { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: TREASURY_PDA, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       programId: SAID_PROGRAM_ID,

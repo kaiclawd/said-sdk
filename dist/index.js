@@ -243,8 +243,8 @@ var SAID = class _SAID {
     return new import_web3.TransactionInstruction({
       keys: [
         { pubkey: agentPDA, isSigner: false, isWritable: true },
-        { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: TREASURY_PDA, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: import_web3.SystemProgram.programId, isSigner: false, isWritable: false }
       ],
       programId: SAID_PROGRAM_ID,
