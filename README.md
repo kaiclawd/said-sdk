@@ -125,3 +125,15 @@ Embed a verification badge:
 ## License
 
 MIT
+
+---
+
+## 🏛️ Colosseum Agent Hackathon Updates
+
+**Feb 6, 2026:**
+- New CLI commands: `npx said wallet generate`, `npx said register`, `npx said verify`
+- Simplified onboarding — no npm install required
+- Free off-chain registration (pending status)
+- On-chain upgrade ~$0.50, verification 0.01 SOL
+
+Part of [SAID Protocol](https://github.com/kaiclawd/said) — Identity Infrastructure for AI Agents.
