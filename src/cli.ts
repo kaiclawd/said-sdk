@@ -11,7 +11,71 @@ const program = new Command();
 program
   .name('said')
   .description('SAID Protocol CLI - Solana Agent Identity')
-  .version('0.2.1');
+  .version('0.2.2');
+
+// ============ WALLET ============
+const walletCmd = program
+  .command('wallet')
+  .description('Wallet management for existing agents');
+
+walletCmd
+  .command('generate')
+  .description('Generate a new Solana wallet for your agent')
+  .option('-o, --output <path>', 'Output path for wallet.json', './wallet.json')
+  .action(async (options) => {
+    const outputPath = path.resolve(options.output);
+    
+    // Check if file already exists
+    if (fs.existsSync(outputPath)) {
+      console.log('❌ File already exists:', outputPath);
+      console.log('   Use -o to specify a different path, or delete the existing file.');
+      process.exit(1);
+    }
+    
+    // Generate new keypair
+    const keypair = Keypair.generate();
+    
+    // Save to file
+    fs.writeFileSync(outputPath, JSON.stringify(Array.from(keypair.secretKey)));
+    
+    console.log('✅ Wallet generated!');
+    console.log('');
+    console.log('📍 Address:', keypair.publicKey.toString());
+    console.log('🔑 Saved to:', outputPath);
+    console.log('');
+    console.log('⚠️  BACKUP THIS FILE! Lose it = lose your identity forever.');
+    console.log('');
+    console.log('Next steps:');
+    console.log(`  said register -k ${options.output} -n "Your Agent Name"`);
+  });
+
+walletCmd
+  .command('show')
+  .description('Show public address from an existing wallet file')
+  .option('-k, --keypair <path>', 'Path to wallet.json', './wallet.json')
+  .action(async (options) => {
+    const keypairPath = path.resolve(options.keypair);
+    
+    if (!fs.existsSync(keypairPath)) {
+      console.log('❌ Wallet file not found:', keypairPath);
+      console.log('   Run: said wallet generate');
+      process.exit(1);
+    }
+    
+    try {
+      const keypairData = JSON.parse(fs.readFileSync(keypairPath, 'utf-8'));
+      const keypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+      
+      console.log('📍 Address:', keypair.publicKey.toString());
+      console.log('📁 File:', keypairPath);
+      console.log('');
+      console.log('View on Solscan:');
+      console.log(`  https://solscan.io/account/${keypair.publicKey.toString()}`);
+    } catch (e) {
+      console.log('❌ Invalid wallet file format');
+      process.exit(1);
+    }
+  });
 
 // ============ REGISTER ============
 program
@@ -97,6 +161,65 @@ program
       console.log('   2. Run: said verify --keypair <path> --method twitter');
       console.log('   3. Pay 0.01 SOL verification fee');
       console.log('   4. Get your verified badge! ✓');
+      
+    } catch (error: any) {
+      console.error('\n❌ Registration failed:', error.message);
+      process.exit(1);
+    }
+  });
+
+// ============ PENDING (OFF-CHAIN) ============
+program
+  .command('pending')
+  .description('Register agent off-chain (FREE, instant, no SOL required)')
+  .requiredOption('-w, --wallet <address>', 'Wallet address (or path to keypair JSON)')
+  .requiredOption('-n, --name <name>', 'Agent name')
+  .option('-t, --twitter <handle>', 'Twitter handle (e.g., @kaiclawd)')
+  .option('-d, --description <desc>', 'Agent description')
+  .option('--website <url>', 'Website URL')
+  .action(async (options) => {
+    try {
+      // Handle wallet - could be address or keypair file path
+      let walletAddress = options.wallet;
+      if (options.wallet.endsWith('.json')) {
+        const keypairData = JSON.parse(fs.readFileSync(options.wallet, 'utf-8'));
+        const keypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+        walletAddress = keypair.publicKey.toString();
+      }
+      
+      console.log('📝 Registering agent (PENDING - off-chain)...');
+      console.log(`   Wallet: ${walletAddress}`);
+      
+      // Call API to register pending
+      const response = await fetch('https://api.saidprotocol.com/api/register/pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: walletAddress,
+          name: options.name,
+          description: options.description || `${options.name} - AI Agent on SAID Protocol`,
+          twitter: options.twitter,
+          website: options.website,
+          capabilities: ['chat', 'assistant']
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('\n✅ Registration successful (PENDING)!');
+        console.log(`   PDA: ${result.pda}`);
+        console.log(`   Profile: ${result.profile}`);
+        console.log(`   Status: PENDING (off-chain)`);
+        console.log('\n📋 Upgrade to on-chain (optional):');
+        console.log('   1. Fund wallet with ~0.005 SOL');
+        console.log('   2. Run: said register --keypair <path> --name "' + options.name + '"');
+      } else {
+        console.log('\n⚠️  ' + (result.message || result.error));
+        if (result.profile) {
+          console.log(`   Profile: ${result.profile}`);
+        }
+      }
       
     } catch (error: any) {
       console.error('\n❌ Registration failed:', error.message);
