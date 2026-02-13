@@ -128,12 +128,115 @@ MIT
 
 ---
 
-## 🏛️ Colosseum Agent Hackathon Updates
+## CLI Tools
 
-**Feb 6, 2026:**
-- New CLI commands: `npx said wallet generate`, `npx said register`, `npx said verify`
-- Simplified onboarding — no npm install required
-- Free off-chain registration (pending status)
-- On-chain upgrade ~$0.50, verification 0.01 SOL
+The SDK includes CLI commands for agent management:
+
+```bash
+# Generate a new Solana wallet
+npx said wallet generate -o wallet.json
+
+# Register an agent (free off-chain)
+npx said register -k wallet.json -n "MyAgent" -d "AI agent description"
+
+# Verify your agent (0.01 SOL)
+npx said verify -k wallet.json
+
+# Check verification status
+npx said status -w YourWalletAddress
+
+# List all agents
+npx said list
+```
+
+### CLI Options
+
+```bash
+npx said --help
+
+Commands:
+  wallet generate  Generate a new Solana wallet
+  register         Register your agent with SAID
+  verify           Get a verification badge
+  status           Check agent verification status
+  list             List all registered agents
+
+Options:
+  -k, --keypair    Path to wallet keypair file
+  -n, --name       Agent name
+  -d, --desc       Agent description
+  -w, --wallet     Wallet address to query
+  --mainnet        Use mainnet (default: devnet)
+```
+
+## Examples
+
+### TypeScript Integration
+
+```typescript
+import { SAID, getAgent, isVerified } from 'said-sdk';
+
+// Initialize with custom config
+const said = new SAID({
+  rpcUrl: 'https://api.mainnet-beta.solana.com',
+  commitment: 'confirmed'
+});
+
+// Check verification before processing
+async function handleAgentRequest(wallet: string) {
+  const verified = await isVerified(wallet);
+  
+  if (!verified) {
+    throw new Error('Agent must be SAID verified');
+  }
+  
+  const agent = await getAgent(wallet);
+  console.log(`Processing request from ${agent.card.name}`);
+  
+  // Your logic here
+}
+
+// List verified agents only
+const agents = await said.listAgents({ includeCards: true });
+const verified = agents.filter(a => a.isVerified);
+console.log(`Found ${verified.length} verified agents`);
+```
+
+### Python Integration (via API)
+
+```python
+import requests
+
+def is_verified(wallet: str) -> bool:
+    r = requests.get(f'https://api.saidprotocol.com/api/verify/{wallet}')
+    return r.json().get('verified', False)
+
+def get_agent(wallet: str):
+    r = requests.get(f'https://api.saidprotocol.com/api/agents/{wallet}')
+    return r.json()
+
+# Usage
+if is_verified('42xhLbEm...'):
+    agent = get_agent('42xhLbEm...')
+    print(f"Agent: {agent['card']['name']}")
+```
+
+---
+
+## 🏛️ Colosseum Agent Hackathon
+
+Built for the Colosseum AI Agent Hackathon (Feb 2-13, 2026).
+
+**What's New:**
+- CLI tools for agent registration (`npx said register`)
+- Wallet generation (`npx said wallet generate`)
+- Verification badges (`npx said verify`)
+- TypeScript SDK for programmatic access
+- REST API fallback for non-JS environments
+
+**Stats (Feb 13, 2026):**
+- v0.2.0 published to npm
+- 18 agents using SAID identity
+- Live on Solana mainnet
 
 Part of [SAID Protocol](https://github.com/kaiclawd/said) — Identity Infrastructure for AI Agents.
