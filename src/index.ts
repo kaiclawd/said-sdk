@@ -9,6 +9,9 @@ import {
 } from '@solana/web3.js';
 import * as bs58 from 'bs58';
 
+// Multi-wallet support
+export * from './multi-wallet';
+
 // SAID Program on Solana Mainnet
 export const SAID_PROGRAM_ID = new PublicKey('5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G');
 export const TREASURY_PDA = new PublicKey('2XfHTeNWTjNwUmgoXaafYuqHcAAXj8F5Kjw2Bnzi4FxH');
@@ -499,6 +502,152 @@ export class SAID {
       // Return result even if verification fails
       return { ...result, verified: false };
     }
+  }
+
+  /**
+   * Link an additional wallet to an existing identity
+   * Both the authority (current identity owner) and the new wallet must sign
+   * 
+   * @param authority - Current authority keypair (must match identity.authority)
+   * @param newWallet - New wallet keypair to link
+   */
+  async linkWallet(
+    authority: Keypair,
+    newWallet: Keypair
+  ): Promise<{ walletLinkPDA: string; txSignature: string }> {
+    const [agentPDA] = SAID.deriveAgentPDA(authority.publicKey);
+    const [walletLinkPDA] = SAID.deriveWalletLinkPDA(newWallet.publicKey);
+
+    // Build link_wallet instruction
+    const discriminator = Buffer.from([/* TODO: Add correct discriminator */]);
+    
+    const keys = [
+      { pubkey: agentPDA, isSigner: false, isWritable: false },
+      { pubkey: walletLinkPDA, isSigner: false, isWritable: true },
+      { pubkey: authority.publicKey, isSigner: true, isWritable: true },
+      { pubkey: newWallet.publicKey, isSigner: true, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+    ];
+
+    const linkIx = new TransactionInstruction({
+      keys,
+      programId: SAID_PROGRAM_ID,
+      data: discriminator
+    });
+
+    const tx = new Transaction().add(linkIx);
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      tx,
+      [authority, newWallet],
+      { commitment: 'confirmed' }
+    );
+
+    return {
+      walletLinkPDA: walletLinkPDA.toString(),
+      txSignature: signature
+    };
+  }
+
+  /**
+   * Unlink a wallet from an identity
+   * Can be called by authority (to remove any wallet) or by the wallet itself
+   * 
+   * @param caller - Either the authority or the linked wallet keypair
+   * @param walletToUnlink - The wallet address to unlink
+   */
+  async unlinkWallet(
+    caller: Keypair,
+    walletToUnlink: PublicKey
+  ): Promise<{ txSignature: string }> {
+    const [walletLinkPDA] = SAID.deriveWalletLinkPDA(walletToUnlink);
+
+    // Build unlink_wallet instruction
+    const discriminator = Buffer.from([/* TODO: Add correct discriminator */]);
+    
+    const keys = [
+      { pubkey: walletLinkPDA, isSigner: false, isWritable: true },
+      { pubkey: caller.publicKey, isSigner: true, isWritable: true }
+    ];
+
+    const unlinkIx = new TransactionInstruction({
+      keys,
+      programId: SAID_PROGRAM_ID,
+      data: discriminator
+    });
+
+    const tx = new Transaction().add(unlinkIx);
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      tx,
+      [caller],
+      { commitment: 'confirmed' }
+    );
+
+    return { txSignature: signature };
+  }
+
+  /**
+   * Transfer authority to a linked wallet (recovery mechanism)
+   * 
+   * @param currentAuthority - Current authority keypair
+   * @param newAuthority - Linked wallet to become new authority
+   */
+  async transferAuthority(
+    currentAuthority: Keypair,
+    newAuthority: PublicKey
+  ): Promise<{ txSignature: string }> {
+    const [agentPDA] = SAID.deriveAgentPDA(currentAuthority.publicKey);
+
+    // Build transfer_authority instruction
+    const discriminator = Buffer.from([/* TODO: Add correct discriminator */]);
+    
+    const keys = [
+      { pubkey: agentPDA, isSigner: false, isWritable: true },
+      { pubkey: currentAuthority.publicKey, isSigner: true, isWritable: false },
+      { pubkey: newAuthority, isSigner: false, isWritable: false }
+    ];
+
+    const transferIx = new TransactionInstruction({
+      keys,
+      programId: SAID_PROGRAM_ID,
+      data: discriminator
+    });
+
+    const tx = new Transaction().add(transferIx);
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      tx,
+      [currentAuthority],
+      { commitment: 'confirmed' }
+    );
+
+    return { txSignature: signature };
+  }
+
+  /**
+   * Derive wallet link PDA for a given wallet
+   */
+  static deriveWalletLinkPDA(wallet: PublicKey): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('wallet'), wallet.toBuffer()],
+      SAID_PROGRAM_ID
+    );
+  }
+
+  /**
+   * Get all wallets linked to an identity
+   * Note: This requires querying all WalletLink accounts - may be slow
+   * 
+   * @param ownerWallet - The primary owner wallet
+   */
+  async getLinkedWallets(ownerWallet: PublicKey): Promise<PublicKey[]> {
+    const [agentPDA] = SAID.deriveAgentPDA(ownerWallet);
+    
+    // TODO: Query all WalletLink accounts that point to this agent_id
+    // This requires getProgramAccounts with filters
+    // For now, return empty array (placeholder)
+    return [];
   }
 }
 
