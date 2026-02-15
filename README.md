@@ -67,12 +67,44 @@ const said = new SAID({
 const agent = await said.lookup('...');
 ```
 
+## Multi-Wallet Support
+
+Link multiple wallets to a single identity for key rotation and recovery:
+
+```typescript
+import { linkWallet, unlinkWallet, transferAuthority, getLinkedWallets } from 'said-sdk';
+import { Connection, Keypair } from '@solana/web3.js';
+
+const connection = new Connection('https://api.mainnet-beta.solana.com');
+
+// Link a new wallet to your identity (both must sign)
+const result = await linkWallet(
+  connection,
+  currentAuthorityKeypair,  // Must own the identity
+  newWalletKeypair          // Wallet to link
+);
+console.log('Linked wallet:', result.walletLinkPDA);
+
+// Unlink a wallet (authority or wallet itself can unlink)
+await unlinkWallet(connection, authorityKeypair, walletToRemove);
+
+// Transfer authority to a linked wallet (recovery)
+await transferAuthority(connection, currentAuthority, newAuthority);
+
+// Get all linked wallets for an identity
+const linkedWallets = await getLinkedWallets(connection, ownerWallet);
+console.log('Linked wallets:', linkedWallets);
+```
+
+**Security:** Both wallets must sign when linking to prevent unauthorized access.
+
 ### Types
 
 ```typescript
 interface AgentIdentity {
   pubkey: string;        // Agent PDA
   owner: string;         // Owner wallet
+  authority: string;     // Current authority (can differ from owner)
   metadataUri: string;   // AgentCard JSON URL
   registeredAt: number;  // Unix timestamp
   isVerified: boolean;
