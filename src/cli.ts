@@ -410,15 +410,15 @@ async function verifyTwitter(wallet: string, handle?: string): Promise<boolean> 
   console.log(`   Checking @${handle}'s bio for wallet address...`);
   
   try {
-    // Use a Twitter API or scraper to check bio
-    // For now, we'll check via API endpoint
     const res = await fetch(`https://api.saidprotocol.com/verify/twitter?handle=${handle}&wallet=${wallet}`);
     if (res.ok) {
       const data = await res.json();
-      return data.verified === true;
+      if (data.verified === true) {
+        return true;  // ✅ FIX: Return early on success
+      }
     }
     
-    // Fallback: instruct user
+    // Only show instructions if verification failed
     console.log(`\n   📝 To verify via Twitter:`);
     console.log(`   1. Go to twitter.com/${handle}`);
     console.log(`   2. Add this to your bio: ${wallet}`);
@@ -426,7 +426,7 @@ async function verifyTwitter(wallet: string, handle?: string): Promise<boolean> 
     return false;
     
   } catch (e) {
-    console.log('   ⚠️  Could not auto-check Twitter. Manual verification needed.');
+    console.error('   ⚠️  API error:', e instanceof Error ? e.message : 'Unknown error');
     return false;
   }
 }

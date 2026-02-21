@@ -120,12 +120,24 @@ export class SAID {
    * Parse raw account data into AgentIdentity
    */
   private parseAgentData(pubkey: string, data: Buffer): AgentIdentity {
+    // ✅ FIX: Validate buffer length
+    if (data.length !== AGENT_ACCOUNT_SIZE) {
+      throw new Error(`Invalid account data size: expected ${AGENT_ACCOUNT_SIZE}, got ${data.length}`);
+    }
+    
     const owner = new PublicKey(data.subarray(8, 40)).toString();
     
     const uriLength = data.readUInt32LE(40);
+    // ✅ FIX: Bounds check
+    if (uriLength > 200 || 44 + uriLength > data.length) {
+      throw new Error('Malformed metadata URI length');
+    }
     const metadataUri = data.subarray(44, 44 + uriLength).toString('utf8');
     
     const offset = 44 + uriLength;
+    if (offset + 17 > data.length) {
+      throw new Error('Truncated account data');
+    }
     const registeredAt = Number(data.readBigInt64LE(offset));
     const isVerified = data[offset + 8] === 1;
     const verifiedAt = Number(data.readBigInt64LE(offset + 9));
@@ -154,8 +166,13 @@ export class SAID {
 
       const agent = this.parseAgentData(agentPDA.toString(), accountInfo.data);
       return agent;
-    } catch (e) {
-      return null;
+    } catch (e: any) {
+      // ✅ FIX: Distinguish between expected vs unexpected errors
+      if (e.message?.includes('Invalid public key')) {
+        throw new Error(`Invalid wallet address: ${wallet}`);
+      }
+      // Network/RPC errors should bubble up
+      throw new Error(`Failed to lookup agent: ${e.message}`);
     }
   }
 
