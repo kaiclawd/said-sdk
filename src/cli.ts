@@ -156,11 +156,10 @@ program
       console.log(`   Transaction: ${result.txSignature}`);
       console.log(`   Explorer: https://solscan.io/tx/${result.txSignature}`);
       
-      console.log('\n📋 Next steps to get verified:');
-      console.log('   1. Add your wallet address to your Twitter bio (or website/.well-known/said.json)');
-      console.log('   2. Run: said verify --keypair <path> --method twitter');
-      console.log('   3. Pay 0.01 SOL verification fee');
-      console.log('   4. Get your verified badge! ✓');
+      console.log('\n📋 Next steps:');
+      console.log('   1. Verify on-chain (0.01 SOL): said verify -k <path>');
+      console.log('   2. Mint your passport (0.05 SOL): said passport -k <path>');
+      console.log('   3. Optional: Add social links to your profile');
       
     } catch (error: any) {
       console.error('\n❌ Registration failed:', error.message);
@@ -230,14 +229,13 @@ program
 // ============ VERIFY ============
 program
   .command('verify')
-  .description('Verify your agent identity (0.01 SOL)')
+  .description('Verify your agent identity on-chain (0.01 SOL)')
   .requiredOption('-k, --keypair <path>', 'Path to wallet keypair JSON file')
-  .requiredOption('-m, --method <method>', 'Verification method: twitter, domain, github')
+  .option('-m, --method <method>', 'Optional social verification: twitter, domain, github')
   .option('--handle <handle>', 'Twitter handle (for twitter method)')
   .option('--domain <domain>', 'Domain name (for domain method)')
   .option('--repo <repo>', 'GitHub repo (for github method)')
   .option('--rpc <url>', 'Custom RPC URL', 'https://api.mainnet-beta.solana.com')
-  .option('--skip-check', 'Skip verification check (for testing)')
   .action(async (options) => {
     try {
       console.log('🔐 Loading keypair...');
@@ -259,9 +257,9 @@ program
         process.exit(0);
       }
 
-      // Perform verification check based on method
-      if (!options.skipCheck) {
-        console.log(`\n🔍 Verifying via ${options.method}...`);
+      // Optional social verification (not required for on-chain verification)
+      if (options.method) {
+        console.log(`\n🔍 Optional social check via ${options.method}...`);
         
         let verified = false;
         
@@ -276,13 +274,12 @@ program
           process.exit(1);
         }
         
-        if (!verified) {
-          console.log('\n❌ Verification check failed!');
-          console.log('   Make sure your wallet address is publicly visible.');
-          process.exit(1);
+        if (verified) {
+          console.log('   ✓ Social verification passed!');
+        } else {
+          console.log('   ⚠️  Social check failed — proceeding with on-chain verification anyway.');
+          console.log('   You can add social links to your profile later.');
         }
-        
-        console.log('   ✓ Verification check passed!');
       }
 
       // Submit verification on-chain (costs 0.01 SOL)
@@ -294,6 +291,9 @@ program
       console.log(`   Transaction: ${result.txSignature}`);
       console.log(`   Explorer: https://solscan.io/tx/${result.txSignature}`);
       console.log('\n🎉 You are now a verified SAID agent!');
+      console.log('\n📋 Next steps:');
+      console.log('   • Mint your soulbound passport: said passport --keypair <path>');
+      console.log('   • Add social links to your profile (optional)');
       
     } catch (error: any) {
       console.error('\n❌ Verification failed:', error.message);
