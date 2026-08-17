@@ -807,7 +807,7 @@ Returns trust metadata in headers:
 | `require_escrow` | Unverified, low stake, or minor risk factors |
 | `block` | Score < 20, 3+ slashes, or strict mode + unregistered |
 
-Revenue model: $0.01/check via x402 pay-per-query.
+Revenue model: $0.001 USDC per check via x402 pay-per-query (live price quoted by the deployed API's 402 response; payment accepted in USDC on Solana, Base, Polygon, Avalanche, and Sei).
 
 ## ERC-8183 Agent Commerce Protocol (v0.14.0)
 
